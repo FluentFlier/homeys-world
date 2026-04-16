@@ -1,0 +1,55 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+dist/
+dist-ssr/
+
+# env
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# misc
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# IDE/tool configs
+.agents/
+.augment/
+.claude/
+.claude-flow/
+.factory/
+.insforge/
+.kilocode/
+.kiro/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.mcp.json
+AGENTS.md
+skills-lock.json
+CLAUDE.md
+oneshot.md

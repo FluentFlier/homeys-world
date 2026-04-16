@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-browser'
+import { insforge } from '@/lib/insforge'
 import type { City } from '@/lib/types'
 import { LISTING_TYPES, AMENITIES } from '@/lib/types'
 
@@ -93,25 +93,20 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
             useWebWorker: true,
           })
 
-          const supabase = createClient()
           const path = `${userId}/${listingId}/${id}.jpg`
-          const { error: uploadError } = await supabase.storage
+          const { data, error: uploadError } = await insforge.storage
             .from('listing-photos')
-            .upload(path, compressed, { contentType: 'image/jpeg' })
+            .upload(path, compressed)
 
-          if (uploadError) {
+          if (uploadError || !data) {
             setPhotos((prev) => prev.filter((p) => p.id !== id))
             URL.revokeObjectURL(preview)
             continue
           }
 
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from('listing-photos').getPublicUrl(path)
-
           setPhotos((prev) =>
             prev.map((p) =>
-              p.id === id ? { ...p, uploading: false, url: publicUrl } : p
+              p.id === id ? { ...p, uploading: false, url: data.url } : p
             )
           )
         } catch {
@@ -165,11 +160,9 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
     setSubmitting(true)
 
     try {
-      const supabase = createClient()
-
       // Rate limit: count listings in last 24h
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const { count } = await supabase
+      const { count } = await insforge.database
         .from('listings')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -190,7 +183,7 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
         .map((p) => p.url)
         .filter((u): u is string => !!u)
 
-      const { error: insertError } = await supabase.from('listings').insert({
+      const { error: insertError } = await insforge.database.from('listings').insert([{
         id: listingId,
         user_id: userId,
         city_id: city.id,
@@ -211,7 +204,7 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
         contact_social: contactSocial.trim() || null,
         is_active: true,
         expires_at: expiresAt.toISOString(),
-      })
+      }])
 
       if (insertError) {
         setError(insertError.message)

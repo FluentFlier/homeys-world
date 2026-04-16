@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Flag, X, CheckCircle, Loader2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-browser'
+import { insforge } from '@/lib/insforge'
 
 const REASONS = [
   { value: 'spam', label: 'Spam or duplicate' },
@@ -30,12 +30,11 @@ export function ReportDialog({ listingId }: ReportDialogProps) {
     setSubmitting(true)
     setError(null)
 
-    const supabase = createClient()
-    const { error: err } = await supabase.from('listing_reports').insert({
+    const { error: err } = await insforge.database.from('listing_reports').insert([{
       listing_id: listingId,
       reason,
       reporter_email: email || null,
-    })
+    }])
 
     setSubmitting(false)
 
@@ -64,7 +63,7 @@ export function ReportDialog({ listingId }: ReportDialogProps) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="report-dialog-title">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-foreground/30 backdrop-blur-sm"
@@ -77,7 +76,7 @@ export function ReportDialog({ listingId }: ReportDialogProps) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
               <div className="flex items-center gap-2">
                 <Flag className="w-4 h-4 text-destructive" />
-                <h2 className="font-heading text-base font-semibold text-foreground">
+                <h2 id="report-dialog-title" className="font-heading text-base font-semibold text-foreground">
                   Report Listing
                 </h2>
               </div>

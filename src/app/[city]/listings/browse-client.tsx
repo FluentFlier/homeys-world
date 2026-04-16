@@ -2,17 +2,30 @@
 
 import { useEffect, useState, useCallback, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import {
   SlidersHorizontal,
   X,
   ChevronDown,
   Search,
   Frown,
+  Map,
+  LayoutGrid,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-browser'
+import { insforge } from '@/lib/insforge'
 import { ListingCard } from '@/components/listing-card'
 import type { City, Listing } from '@/lib/types'
 import { LISTING_TYPES, AMENITIES } from '@/lib/types'
+
+// Lazy load map to avoid SSR issues and reduce initial bundle
+const ListingMap = dynamic(() => import('@/components/listing-map').then(m => ({ default: m.ListingMap })), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[400px] lg:h-[500px] rounded-2xl border border-border bg-muted/30 flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+    </div>
+  ),
+})
 
 type SortOption = 'newest' | 'price_asc' | 'price_desc' | 'move_in'
 
@@ -61,6 +74,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
   const [maxPrice, setMaxPrice] = useState(initialMaxPrice)
   const [sort, setSort] = useState<SortOption>(initialSort)
 
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid')
   const [listings, setListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -107,9 +121,8 @@ export function BrowseClient({ city }: BrowseClientProps) {
 
     async function fetchListings() {
       setLoading(true)
-      const supabase = createClient()
 
-      let query = supabase
+      let query = insforge.database
         .from('listings')
         .select('*, cities(*)')
         .eq('city_id', city.id)
@@ -238,6 +251,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
           <input
             type="number"
             placeholder="Min"
+            aria-label="Minimum price"
             value={minPrice}
             onChange={(e) => {
               setMinPrice(e.target.value)
@@ -248,6 +262,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
           <input
             type="number"
             placeholder="Max"
+            aria-label="Maximum price"
             value={maxPrice}
             onChange={(e) => {
               setMaxPrice(e.target.value)
@@ -386,12 +401,33 @@ export function BrowseClient({ city }: BrowseClientProps) {
               )}
             </button>
 
+            {/* View toggle */}
+            <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-full p-0.5">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-full transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Grid view"
+                aria-label="Grid view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('map')}
+                className={`p-1.5 rounded-full transition-colors ${viewMode === 'map' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Map view"
+                aria-label="Map view"
+              >
+                <Map className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* Sort */}
             <div className="relative ml-auto">
               <div className="inline-flex items-center gap-1.5">
-                <label className="font-body text-xs text-muted-foreground hidden sm:inline">Sort by</label>
+                <label htmlFor="sort-select" className="font-body text-xs text-muted-foreground hidden sm:inline">Sort by</label>
                 <div className="relative">
                   <select
+                    id="sort-select"
                     value={sort}
                     onChange={(e) => {
                       const next = e.target.value as SortOption
@@ -411,6 +447,16 @@ export function BrowseClient({ city }: BrowseClientProps) {
               </div>
             </div>
           </div>
+
+          {/* Map view */}
+          {viewMode === 'map' && !loading && (
+            <div className="mb-6">
+              <ListingMap listings={listings} city={city} />
+              <p className="font-body text-xs text-muted-foreground mt-2 text-center">
+                {listings.length} listing{listings.length !== 1 ? 's' : ''} shown on map
+              </p>
+            </div>
+          )}
 
           {/* Grid */}
           {loading ? (
@@ -474,6 +520,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
               </div>
               <button
                 onClick={() => setFiltersOpen(false)}
+                aria-label="Close filters"
                 className="w-8 h-8 rounded-full bg-muted flex items-center justify-center hover:bg-border transition-colors"
               >
                 <X className="w-4 h-4 text-foreground/60" />

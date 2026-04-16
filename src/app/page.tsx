@@ -1,34 +1,48 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { MapPin, Search, MessageCircle, Globe } from 'lucide-react'
-import { createClient } from '@/lib/supabase-server'
-import { City } from '@/lib/types'
+import { MapPin, Search, MessageCircle, Globe, Users, Sofa } from 'lucide-react'
+import { insforge } from '@/lib/insforge'
+import type { City } from '@/lib/types'
 import { Blob } from '@/components/blob'
 
-async function requestCity(formData: FormData) {
-  'use server'
-  const city_name = formData.get('city_name') as string
-  const country = formData.get('country') as string
-  const email = formData.get('email') as string
-  const note = formData.get('note') as string
+export default function HomePage() {
+  const [cities, setCities] = useState<City[]>([])
+  const [citiesLoading, setCitiesLoading] = useState(true)
+  const [submitted, setSubmitted] = useState(false)
 
-  if (!city_name?.trim()) return
+  useEffect(() => {
+    insforge.database
+      .from('cities')
+      .select('*')
+      .eq('is_active', true)
+      .order('listing_count', { ascending: false })
+      .then(({ data }) => {
+        setCities((data as City[]) ?? [])
+        setCitiesLoading(false)
+      }, () => {
+        setCitiesLoading(false)
+      })
+  }, [])
 
-  const supabase = await createClient()
-  await supabase.from('city_requests').insert({
-    city_name: city_name.trim(),
-    country: country?.trim() || null,
-    requester_email: email?.trim() || null,
-    note: note?.trim() || null,
-  })
-}
+  async function handleRequestCity(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = e.currentTarget
+    const formData = new FormData(form)
+    const city_name = (formData.get('city_name') as string)?.trim()
+    if (!city_name) return
 
-export default async function HomePage() {
-  const supabase = await createClient()
-  const { data: cities } = await supabase
-    .from('cities')
-    .select('*')
-    .eq('is_active', true)
-    .order('listing_count', { ascending: false })
+    await insforge.database.from('city_requests').insert([{
+      city_name,
+      country: (formData.get('country') as string)?.trim() || null,
+      requester_email: (formData.get('email') as string)?.trim() || null,
+      note: (formData.get('note') as string)?.trim() || null,
+    }])
+    setSubmitted(true)
+    form.reset()
+    setTimeout(() => setSubmitted(false), 3000)
+  }
 
   return (
     <>
@@ -41,11 +55,11 @@ export default async function HomePage() {
         <div className="relative max-w-3xl mx-auto text-center">
           <h1 className="font-heading text-5xl sm:text-6xl lg:text-7xl font-bold text-foreground leading-[1.1] tracking-tight">
             Find your next place.{' '}
-            <span className="text-primary">Skip the scams.</span>
+            <span className="text-primary">Find your people.</span>
           </h1>
           <p className="mt-6 font-body text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            A free, open-source housing board for roommates, subleases, and apartments
-            across the world.
+            A free housing board for listings, roommates, and crash pads
+            in cities around the world. No fees, no middleman.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a
@@ -55,12 +69,21 @@ export default async function HomePage() {
               <Search className="w-4 h-4" />
               Browse cities
             </a>
+            <Link
+              href="/profiles"
+              className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
+            >
+              <Users className="w-4 h-4" />
+              Find roommates
+            </Link>
             <a
-              href="#request-city"
+              href="https://chat.whatsapp.com/HkfzSnMZ1Rd0AqAvj8kwyO?mode=gi_t"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-accent text-accent-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
             >
-              <Globe className="w-4 h-4" />
-              Request a city
+              <MessageCircle className="w-4 h-4" />
+              Join community
             </a>
           </div>
         </div>
@@ -79,7 +102,17 @@ export default async function HomePage() {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {(cities as City[] | null)?.map((city) => (
+            {citiesLoading && cities.length === 0 && Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-6 animate-pulse"
+              >
+                <div className="h-5 bg-muted rounded-full w-2/3 mb-2" />
+                <div className="h-4 bg-muted rounded-full w-1/3 mb-3" />
+                <div className="h-4 bg-muted rounded-full w-1/4" />
+              </div>
+            ))}
+            {cities.map((city) => (
               <Link
                 key={city.id}
                 href={`/${city.slug}`}
@@ -102,7 +135,6 @@ export default async function HomePage() {
               </Link>
             ))}
 
-            {/* Request a city card */}
             <a
               href="#request-city"
               className="group relative rounded-[2rem] border-2 border-dashed border-border bg-muted/30 p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col items-center justify-center text-center min-h-[140px]"
@@ -128,22 +160,27 @@ export default async function HomePage() {
             How it works
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              {
-                icon: MapPin,
-                title: 'Pick a city',
-                desc: 'Choose from the cities we cover or request your own.',
-              },
               {
                 icon: Search,
                 title: 'Browse or post',
-                desc: 'Find rooms, apartments, or roommates. Posting is free.',
+                desc: 'Find rooms, apartments, or post your own listing. Free, takes under a minute.',
+              },
+              {
+                icon: Users,
+                title: 'Find your people',
+                desc: 'Browse roommate profiles and connect with someone whose vibe matches yours.',
+              },
+              {
+                icon: Sofa,
+                title: 'Crash somewhere',
+                desc: 'Need a couch for a few nights? Browse crash pads from locals in your city.',
               },
               {
                 icon: MessageCircle,
                 title: 'Reach out',
-                desc: 'Contact the poster directly. No middleman, no fees.',
+                desc: 'Contact anyone directly. No middleman, no fees, no catch.',
               },
             ].map((step, i) => (
               <div
@@ -180,8 +217,14 @@ export default async function HomePage() {
             Tell us where you need a housing board and we will add it.
           </p>
 
+          {submitted && (
+            <div className="mb-6 text-center font-body text-sm text-primary bg-primary/10 rounded-xl px-4 py-3">
+              Request submitted! We will let you know when it launches.
+            </div>
+          )}
+
           <form
-            action={requestCity}
+            onSubmit={handleRequestCity}
             className="space-y-5 rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8"
           >
             <div>

@@ -1,6 +1,9 @@
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase-server'
+import { insforge } from '@/lib/insforge'
 import type { Listing } from '@/lib/types'
 import { LISTING_TYPES, formatPrice, formatDate } from '@/lib/types'
 import {
@@ -12,105 +15,101 @@ import {
   Clock,
   Pencil,
   Inbox,
+  Loader2,
 } from 'lucide-react'
 
-async function toggleActive(formData: FormData) {
-  'use server'
-  const id = formData.get('id') as string
-  const active = formData.get('active') === 'true'
-  const supabase = await (await import('@/lib/supabase-server')).createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return
-  await supabase
-    .from('listings')
-    .update({ is_active: active, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('user_id', user.id)
-  const { revalidatePath } = await import('next/cache')
-  revalidatePath('/me')
-}
+export default function MyListingsPage() {
+  const router = useRouter()
+  const [currentTab, setCurrentTab] = useState<'active' | 'expired'>('active')
 
-async function deleteListing(formData: FormData) {
-  'use server'
-  const id = formData.get('id') as string
-  const supabase = await (await import('@/lib/supabase-server')).createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return
-  await supabase.from('listings').delete().eq('id', id).eq('user_id', user.id)
-  const { revalidatePath } = await import('next/cache')
-  revalidatePath('/me')
-}
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
+  const [allListings, setAllListings] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
 
-async function extendListing(formData: FormData) {
-  'use server'
-  const id = formData.get('id') as string
-  const supabase = await (await import('@/lib/supabase-server')).createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return
+  const fetchListings = useCallback(async (userId: string) => {
+    const { data: listings } = await insforge.database
+      .from('listings')
+      .select('*, cities(*)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
 
-  const { data: listing } = await supabase
-    .from('listings')
-    .select('expires_at')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .single()
+    setAllListings((listings ?? []) as Listing[])
+  }, [])
 
-  if (!listing) return
+  useEffect(() => {
+    async function init() {
+      const {
+        data: { user },
+      } = await insforge.auth.getCurrentUser()
 
-  const base = new Date(listing.expires_at) > new Date()
-    ? new Date(listing.expires_at)
-    : new Date()
-  base.setDate(base.getDate() + 60)
+      if (!user) {
+        router.push('/sign-in?next=/me')
+        return
+      }
 
-  await supabase
-    .from('listings')
-    .update({
-      expires_at: base.toISOString(),
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('user_id', user.id)
+      setUser(user)
+      await fetchListings(user.id)
+      setLoading(false)
+    }
 
-  const { revalidatePath } = await import('next/cache')
-  revalidatePath('/me')
-}
+    init()
+  }, [router, fetchListings])
 
-interface Props {
-  searchParams: Promise<{ tab?: string }>
-}
-
-export const metadata = {
-  title: 'My Listings - Homeys World',
-}
-
-export default async function MyListingsPage({ searchParams }: Props) {
-  const { tab } = await searchParams
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/sign-in?next=/me')
+  const handleToggleActive = async (id: string, active: boolean) => {
+    if (!user) return
+    await insforge.database
+      .from('listings')
+      .update({ is_active: active, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id)
+    await fetchListings(user.id)
   }
 
-  const { data: listings } = await supabase
-    .from('listings')
-    .select('*, cities(*)')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+  const handleDelete = async (id: string) => {
+    if (!user) return
+    await insforge.database.from('listings').delete().eq('id', id).eq('user_id', user.id)
+    await fetchListings(user.id)
+  }
 
-  const allListings = (listings ?? []) as Listing[]
+  const handleExtend = async (id: string) => {
+    if (!user) return
+
+    const { data: listing } = await insforge.database
+      .from('listings')
+      .select('expires_at')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!listing) return
+
+    const base = new Date(listing.expires_at) > new Date()
+      ? new Date(listing.expires_at)
+      : new Date()
+    base.setDate(base.getDate() + 60)
+
+    await insforge.database
+      .from('listings')
+      .update({
+        expires_at: base.toISOString(),
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', user.id)
+
+    await fetchListings(user.id)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-28 pb-20 px-4 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   const now = new Date()
-
   const active = allListings.filter(
     (l) => l.is_active && new Date(l.expires_at) > now
   )
@@ -118,7 +117,6 @@ export default async function MyListingsPage({ searchParams }: Props) {
     (l) => !l.is_active || new Date(l.expires_at) <= now
   )
 
-  const currentTab = tab === 'expired' ? 'expired' : 'active'
   const display = currentTab === 'active' ? active : expired
 
   return (
@@ -139,8 +137,8 @@ export default async function MyListingsPage({ searchParams }: Props) {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8">
-          <Link
-            href="/me?tab=active"
+          <button
+            onClick={() => setCurrentTab('active')}
             className={`font-body text-sm px-4 py-2 rounded-full transition-colors ${
               currentTab === 'active'
                 ? 'bg-primary text-primary-foreground'
@@ -148,9 +146,9 @@ export default async function MyListingsPage({ searchParams }: Props) {
             }`}
           >
             Active ({active.length})
-          </Link>
-          <Link
-            href="/me?tab=expired"
+          </button>
+          <button
+            onClick={() => setCurrentTab('expired')}
             className={`font-body text-sm px-4 py-2 rounded-full transition-colors ${
               currentTab === 'expired'
                 ? 'bg-primary text-primary-foreground'
@@ -158,7 +156,7 @@ export default async function MyListingsPage({ searchParams }: Props) {
             }`}
           >
             Expired ({expired.length})
-          </Link>
+          </button>
         </div>
 
         {/* Listings */}
@@ -289,53 +287,42 @@ export default async function MyListingsPage({ searchParams }: Props) {
                     </Link>
 
                     {!isExpired && (
-                      <form action={toggleActive}>
-                        <input type="hidden" name="id" value={listing.id} />
-                        <input
-                          type="hidden"
-                          name="active"
-                          value={listing.is_active ? 'false' : 'true'}
-                        />
-                        <button
-                          type="submit"
-                          className="inline-flex items-center gap-1 font-body text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-full hover:bg-muted"
-                        >
-                          {listing.is_active ? (
-                            <>
-                              <Pause className="w-3 h-3" />
-                              Pause
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3 h-3" />
-                              Activate
-                            </>
-                          )}
-                        </button>
-                      </form>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(listing.id, !listing.is_active)}
+                        className="inline-flex items-center gap-1 font-body text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-full hover:bg-muted"
+                      >
+                        {listing.is_active ? (
+                          <>
+                            <Pause className="w-3 h-3" />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3 h-3" />
+                            Activate
+                          </>
+                        )}
+                      </button>
                     )}
 
-                    <form action={extendListing}>
-                      <input type="hidden" name="id" value={listing.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-1 font-body text-xs text-primary hover:text-primary/80 transition-colors px-3 py-1.5 rounded-full hover:bg-primary/5"
-                      >
-                        <Clock className="w-3 h-3" />
-                        Extend 60 days
-                      </button>
-                    </form>
+                    <button
+                      type="button"
+                      onClick={() => handleExtend(listing.id)}
+                      className="inline-flex items-center gap-1 font-body text-xs text-primary hover:text-primary/80 transition-colors px-3 py-1.5 rounded-full hover:bg-primary/5"
+                    >
+                      <Clock className="w-3 h-3" />
+                      Extend 60 days
+                    </button>
 
-                    <form action={deleteListing}>
-                      <input type="hidden" name="id" value={listing.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-1 font-body text-xs text-destructive hover:text-destructive/80 transition-colors px-3 py-1.5 rounded-full hover:bg-destructive/5"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        Delete
-                      </button>
-                    </form>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(listing.id)}
+                      className="inline-flex items-center gap-1 font-body text-xs text-destructive hover:text-destructive/80 transition-colors px-3 py-1.5 rounded-full hover:bg-destructive/5"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </button>
                   </div>
                 </div>
               )

@@ -1,26 +1,53 @@
+'use client'
+
+import { useState } from 'react'
 import { Heart, Github, Globe, Code2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-server'
+import { insforge } from '@/lib/insforge'
 import { Blob } from '@/components/blob'
 
-async function requestCity(formData: FormData) {
-  'use server'
-  const city_name = formData.get('city_name') as string
-  const country = formData.get('country') as string
-  const email = formData.get('email') as string
-  const note = formData.get('note') as string
-
-  if (!city_name?.trim()) return
-
-  const supabase = await createClient()
-  await supabase.from('city_requests').insert({
-    city_name: city_name.trim(),
-    country: country?.trim() || null,
-    requester_email: email?.trim() || null,
-    note: note?.trim() || null,
-  })
-}
-
 export default function AboutPage() {
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleRequestCity = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+
+    const formData = new FormData(e.currentTarget)
+    const city_name = formData.get('city_name') as string
+    const country = formData.get('country') as string
+    const email = formData.get('email') as string
+    const note = formData.get('note') as string
+
+    if (!city_name?.trim()) {
+      setSubmitting(false)
+      return
+    }
+
+    try {
+      const { error: insertError } = await insforge.database.from('city_requests').insert([{
+        city_name: city_name.trim(),
+        country: country?.trim() || null,
+        requester_email: email?.trim() || null,
+        note: note?.trim() || null,
+      }])
+
+      if (insertError) {
+        setError('Something went wrong. Please try again.')
+        setSubmitting(false)
+        return
+      }
+
+      setSubmitting(false)
+      setSubmitted(true)
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setSubmitting(false)
+    }
+  }
+
   return (
     <>
       {/* Hero */}
@@ -33,8 +60,8 @@ export default function AboutPage() {
             About Homeys World
           </h1>
           <p className="mt-6 font-body text-lg text-muted-foreground leading-relaxed max-w-xl mx-auto">
-            Finding housing in a new city should not mean getting scammed on Facebook groups or
-            paying middlemen. We are fixing that.
+            Finding housing in a new city should be simple, transparent, and free.
+            We are making that happen.
           </p>
         </div>
       </section>
@@ -90,12 +117,21 @@ export default function AboutPage() {
               >
                 Ada
               </a>{' '}
-              -- an AI-powered personal finance app.
+              -- an AI secretary for your phone.
             </p>
-            <p className="font-body text-sm text-foreground/70 leading-relaxed">
+            <p className="font-body text-sm text-foreground/70 leading-relaxed mb-4">
               I believe in building tools that are free, simple, and actually useful. If Homeys
-              World helps even one person avoid a housing scam, it was worth it.
+              World helps even one person find a great place to live, it was worth it.
             </p>
+            <a
+              href="https://linkedin.com/in/amanjesh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+              LinkedIn
+            </a>
           </div>
         </div>
       </section>
@@ -119,7 +155,7 @@ export default function AboutPage() {
                 View the source, report bugs, or star the repo.
               </p>
               <a
-                href="https://github.com/anirudhmanjesh/homeys-world"
+                href="https://github.com/FluentFlier/homeys-world"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary hover:text-primary/80 transition-colors"
@@ -150,7 +186,7 @@ export default function AboutPage() {
                 Add a city, fix a bug, or improve the design.
               </p>
               <a
-                href="https://github.com/anirudhmanjesh/homeys-world/issues"
+                href="https://github.com/FluentFlier/homeys-world/issues"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 font-body text-sm font-medium text-primary hover:text-primary/80 transition-colors"
@@ -174,70 +210,85 @@ export default function AboutPage() {
             We are growing one city at a time. Tell us where you need us next.
           </p>
 
-          <form
-            action={requestCity}
-            className="space-y-5 rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8"
-          >
-            <div>
-              <label htmlFor="city_name" className="block font-body text-sm font-medium text-foreground mb-1.5">
-                City name <span className="text-destructive">*</span>
-              </label>
-              <input
-                id="city_name"
-                name="city_name"
-                type="text"
-                required
-                placeholder="e.g. Berlin"
-                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-              />
+          {submitted ? (
+            <div className="rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8 text-center">
+              <p className="font-body text-foreground font-medium">
+                Thank you! Your request has been submitted.
+              </p>
             </div>
-
-            <div>
-              <label htmlFor="country" className="block font-body text-sm font-medium text-foreground mb-1.5">
-                Country
-              </label>
-              <input
-                id="country"
-                name="country"
-                type="text"
-                placeholder="e.g. Germany"
-                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="email" className="block font-body text-sm font-medium text-foreground mb-1.5">
-                Your email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="so we can notify you"
-                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="note" className="block font-body text-sm font-medium text-foreground mb-1.5">
-                Note
-              </label>
-              <textarea
-                id="note"
-                name="note"
-                rows={3}
-                placeholder="Anything else you want us to know?"
-                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          ) : (
+            <form
+              onSubmit={handleRequestCity}
+              className="space-y-5 rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8"
             >
-              Submit request
-            </button>
-          </form>
+              <div>
+                <label htmlFor="city_name" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                  City name <span className="text-destructive">*</span>
+                </label>
+                <input
+                  id="city_name"
+                  name="city_name"
+                  type="text"
+                  required
+                  placeholder="e.g. Berlin"
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="country" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                  Country
+                </label>
+                <input
+                  id="country"
+                  name="country"
+                  type="text"
+                  placeholder="e.g. Germany"
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="email" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                  Your email
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="so we can notify you"
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="note" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                  Note
+                </label>
+                <textarea
+                  id="note"
+                  name="note"
+                  rows={3}
+                  placeholder="Anything else you want us to know?"
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition resize-none"
+                />
+              </div>
+
+              {error && (
+                <div className="font-body text-sm text-destructive bg-destructive/5 rounded-xl px-4 py-3">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+              >
+                {submitting ? 'Submitting...' : 'Submit request'}
+              </button>
+            </form>
+          )}
         </div>
       </section>
     </>

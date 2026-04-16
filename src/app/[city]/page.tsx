@@ -1,62 +1,101 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { Globe, Search, PenLine } from 'lucide-react'
-import { createClient } from '@/lib/supabase-server'
+import { Globe, Search, PenLine, Sofa } from 'lucide-react'
+import { insforge } from '@/lib/insforge'
 import { City, Listing } from '@/lib/types'
 import { Blob } from '@/components/blob'
 import { ListingCard } from '@/components/listing-card'
 
-async function requestCity(formData: FormData) {
-  'use server'
-  const city_name = formData.get('city_name') as string
-  const country = formData.get('country') as string
-  const email = formData.get('email') as string
-  const note = formData.get('note') as string
+export default function CityPage() {
+  const { city: slug } = useParams<{ city: string }>()
+  const [city, setCity] = useState<City | null>(null)
+  const [listings, setListings] = useState<(Listing & { cities: City })[]>([])
+  const [loading, setLoading] = useState(true)
+  const [notFoundState, setNotFoundState] = useState(false)
+  const [errorState, setErrorState] = useState(false)
 
-  if (!city_name?.trim()) return
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setErrorState(false)
 
-  const supabase = await createClient()
-  await supabase.from('city_requests').insert({
-    city_name: city_name.trim(),
-    country: country?.trim() || null,
-    requester_email: email?.trim() || null,
-    note: note?.trim() || null,
-  })
-}
+      try {
+        const { data: cityData } = await insforge.database
+          .from('cities')
+          .select('*')
+          .eq('slug', slug)
+          .eq('is_active', true)
+          .single()
 
-export default async function CityPage({
-  params,
-}: {
-  params: Promise<{ city: string }>
-}) {
-  const { city: slug } = await params
-  const supabase = await createClient()
+        if (!cityData) {
+          setNotFoundState(true)
+          setLoading(false)
+          return
+        }
 
-  const { data: city } = await supabase
-    .from('cities')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
+        setCity(cityData as City)
 
-  if (!city) {
-    return <CityNotFound slug={slug} requestCity={requestCity} />
+        const { data: listingsData } = await insforge.database
+          .from('listings')
+          .select('*, cities(*)')
+          .eq('city_id', (cityData as City).id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(6)
+
+        setListings((listingsData ?? []) as (Listing & { cities: City })[])
+      } catch {
+        setErrorState(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    load()
+  }, [slug])
+
+  if (loading) {
+    return (
+      <section className="relative overflow-hidden pt-32 pb-20 px-4">
+        <div className="relative max-w-3xl mx-auto flex justify-center">
+          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
+      </section>
+    )
   }
 
-  const typedCity = city as City
+  if (errorState) {
+    return (
+      <section className="relative overflow-hidden pt-32 pb-20 px-4">
+        <div className="relative max-w-md mx-auto text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10 mb-6">
+            <Globe className="w-7 h-7 text-destructive" />
+          </div>
+          <h1 className="font-heading text-2xl font-bold text-foreground mb-3">
+            Something went wrong
+          </h1>
+          <p className="font-body text-muted-foreground mb-6">
+            We could not load this page. Please try again.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
+          >
+            Try again
+          </button>
+        </div>
+      </section>
+    )
+  }
 
-  const { data: listings } = await supabase
-    .from('listings')
-    .select('*, cities(*)')
-    .eq('city_id', typedCity.id)
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(6)
+  if (notFoundState || !city) {
+    return <CityNotFound slug={slug} />
+  }
 
-  const typedListings = (listings ?? []) as (Listing & { cities: City })[]
-
-  // Collect unique neighborhoods from the city
-  const neighborhoods = typedCity.neighborhoods ?? []
+  const neighborhoods = city.neighborhoods ?? []
 
   return (
     <>
@@ -67,13 +106,13 @@ export default async function CityPage({
 
         <div className="relative max-w-3xl mx-auto text-center">
           <p className="font-body text-sm font-medium text-secondary mb-3 tracking-wide uppercase">
-            {typedCity.country}
+            {city.country}
           </p>
           <h1 className="font-heading text-5xl sm:text-6xl lg:text-7xl font-bold text-foreground leading-[1.1] tracking-tight">
-            {typedCity.name}
+            {city.name}
           </h1>
           <p className="mt-4 font-body text-lg text-muted-foreground">
-            {typedCity.listing_count} {typedCity.listing_count === 1 ? 'listing' : 'listings'} available
+            {city.listing_count} {city.listing_count === 1 ? 'listing' : 'listings'} available
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
@@ -82,6 +121,13 @@ export default async function CityPage({
             >
               <Search className="w-4 h-4" />
               Browse listings
+            </Link>
+            <Link
+              href={`/${slug}/couches`}
+              className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
+            >
+              <Sofa className="w-4 h-4" />
+              Crash pads
             </Link>
             <Link
               href={`/${slug}/post`}
@@ -95,7 +141,7 @@ export default async function CityPage({
       </section>
 
       {/* Recent listings */}
-      {typedListings.length > 0 && (
+      {listings.length > 0 && (
         <section className="relative overflow-hidden py-16 px-4">
           <Blob className="w-[300px] h-[300px] -bottom-20 left-10 opacity-20" color="primary" />
 
@@ -106,7 +152,7 @@ export default async function CityPage({
                   Recent listings
                 </h2>
                 <p className="font-body text-sm text-muted-foreground mt-1">
-                  The latest posts in {typedCity.name}
+                  The latest posts in {city.name}
                 </p>
               </div>
               <Link
@@ -118,11 +164,11 @@ export default async function CityPage({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {typedListings.map((listing, i) => (
+              {listings.map((listing, i) => (
                 <ListingCard
                   key={listing.id}
                   listing={listing}
-                  city={typedCity}
+                  city={city}
                   index={i}
                 />
               ))}
@@ -169,7 +215,7 @@ export default async function CityPage({
       )}
 
       {/* Empty state if no listings */}
-      {typedListings.length === 0 && (
+      {listings.length === 0 && (
         <section className="py-20 px-4 text-center">
           <div className="max-w-md mx-auto">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent mb-6">
@@ -179,7 +225,7 @@ export default async function CityPage({
               No listings yet
             </h2>
             <p className="font-body text-muted-foreground mb-6">
-              Be the first to post in {typedCity.name}!
+              Be the first to post in {city.name}!
             </p>
             <Link
               href={`/${slug}/post`}
@@ -195,19 +241,35 @@ export default async function CityPage({
   )
 }
 
-/* ── City-not-found fallback ──────────────────────────────── */
+/* -- City-not-found fallback ---- */
 
-function CityNotFound({
-  slug,
-  requestCity,
-}: {
-  slug: string
-  requestCity: (formData: FormData) => Promise<void>
-}) {
+function CityNotFound({ slug }: { slug: string }) {
+  const [submitted, setSubmitted] = useState(false)
+
   const prettyName = slug
     .split('-')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const city_name = formData.get('city_name') as string
+    const country = formData.get('country') as string
+    const email = formData.get('email') as string
+    const note = formData.get('note') as string
+
+    if (!city_name?.trim()) return
+
+    await insforge.database.from('city_requests').insert([{
+      city_name: city_name.trim(),
+      country: country?.trim() || null,
+      requester_email: email?.trim() || null,
+      note: note?.trim() || null,
+    }])
+
+    setSubmitted(true)
+  }
 
   return (
     <section className="relative overflow-hidden pt-32 pb-20 px-4">
@@ -225,58 +287,67 @@ function CityNotFound({
           But you can help us get there! Request this city and we will notify you when it launches.
         </p>
 
-        <form
-          action={requestCity}
-          className="text-left space-y-5 rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8"
-        >
-          <input type="hidden" name="city_name" value={prettyName} />
-
-          <div>
-            <label htmlFor="country" className="block font-body text-sm font-medium text-foreground mb-1.5">
-              Country
-            </label>
-            <input
-              id="country"
-              name="country"
-              type="text"
-              placeholder="e.g. Germany"
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-            />
+        {submitted ? (
+          <div className="rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8 text-center">
+            <p className="font-heading text-lg font-semibold text-foreground">Request submitted!</p>
+            <p className="font-body text-sm text-muted-foreground mt-2">
+              We will notify you when {prettyName} launches.
+            </p>
           </div>
-
-          <div>
-            <label htmlFor="email" className="block font-body text-sm font-medium text-foreground mb-1.5">
-              Your email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="so we can notify you"
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="note" className="block font-body text-sm font-medium text-foreground mb-1.5">
-              Note
-            </label>
-            <textarea
-              id="note"
-              name="note"
-              rows={3}
-              placeholder="Why this city? Anything else?"
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition resize-none"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="text-left space-y-5 rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-8"
           >
-            Request {prettyName}
-          </button>
-        </form>
+            <input type="hidden" name="city_name" value={prettyName} />
+
+            <div>
+              <label htmlFor="country" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                Country
+              </label>
+              <input
+                id="country"
+                name="country"
+                type="text"
+                placeholder="e.g. Germany"
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                Your email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="so we can notify you"
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="note" className="block font-body text-sm font-medium text-foreground mb-1.5">
+                Note
+              </label>
+              <textarea
+                id="note"
+                name="note"
+                rows={3}
+                placeholder="Why this city? Anything else?"
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 font-body text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 transition resize-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              Request {prettyName}
+            </button>
+          </form>
+        )}
 
         <Link
           href="/"

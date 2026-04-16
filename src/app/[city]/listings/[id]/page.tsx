@@ -1,4 +1,7 @@
-import { notFound } from 'next/navigation'
+'use client'
+
+import { Suspense, useEffect, useState } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -9,9 +12,9 @@ import {
   Eye,
   Clock,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase-server'
+import { insforge } from '@/lib/insforge'
 import type { Listing, City } from '@/lib/types'
-import { formatPrice, formatDate, LISTING_TYPES, AMENITIES } from '@/lib/types'
+import { formatPrice, formatDate, LISTING_TYPES } from '@/lib/types'
 import { RevealContact } from './reveal-contact'
 import { ReportDialog } from './report-dialog'
 
@@ -25,73 +28,124 @@ const AMENITY_LABELS: Record<string, string> = {
   utilities_included: 'Utilities Included',
 }
 
-interface Props {
-  params: Promise<{ city: string; id: string }>
+const PLACEHOLDER_GRADIENTS = [
+  'from-primary/20 to-accent',
+  'from-secondary/20 to-muted',
+  'from-accent to-primary/10',
+  'from-muted to-secondary/10',
+]
+
+export default function ListingDetailPage() {
+  return (
+    <Suspense fallback={
+      <div className="pt-28 pb-16 px-4 max-w-4xl mx-auto flex justify-center">
+        <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    }>
+      <ListingDetailContent />
+    </Suspense>
+  )
 }
 
-async function incrementViewCount(listingId: string) {
-  'use server'
-  const supabase = await createClient()
-  // Attempt RPC first, fall back to direct update
-  const { error } = await supabase.rpc('increment_view_count', { listing_id: listingId })
-  if (error) {
-    await supabase
-      .from('listings')
-      .update({ view_count: (await supabase.from('listings').select('view_count').eq('id', listingId).single()).data?.view_count + 1 || 1 })
-      .eq('id', listingId)
+function ListingDetailContent() {
+  const { city: slug, id } = useParams<{ city: string; id: string }>()
+  const searchParams = useSearchParams()
+  const [listing, setListing] = useState<Listing | null>(null)
+  const [city, setCity] = useState<City | null>(null)
+  const [notFoundState, setNotFoundState] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+
+  // Show success toast when redirected from post form
+  useEffect(() => {
+    if (searchParams.get('success') === 'true') {
+      setShowSuccess(true)
+      const timer = setTimeout(() => setShowSuccess(false), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await insforge.database
+        .from('listings')
+        .select('*, cities(*)')
+        .eq('id', id)
+        .single()
+
+      if (!data) {
+        setNotFoundState(true)
+        return
+      }
+
+      const cityData = (data as any).cities as City
+      if (!cityData || cityData.slug !== slug) {
+        setNotFoundState(true)
+        return
+      }
+
+      setListing(data as unknown as Listing)
+      setCity(cityData)
+
+      // Fire-and-forget view count increment
+      insforge.database.rpc('increment_view_count', { listing_id: id }).then(({ error }) => {
+        if (error) {
+          // Fallback: direct update
+          insforge.database
+            .from('listings')
+            .select('view_count')
+            .eq('id', id)
+            .single()
+            .then(({ data: viewData }) => {
+              insforge.database
+                .from('listings')
+                .update({ view_count: (viewData?.view_count || 0) + 1 })
+                .eq('id', id)
+            })
+        }
+      })
+    }
+
+    load()
+  }, [slug, id])
+
+  if (notFoundState) {
+    return (
+      <div className="pt-24 pb-16 px-4 sm:px-6 max-w-4xl mx-auto text-center">
+        <h1 className="font-heading text-3xl font-bold text-foreground">Listing not found</h1>
+        <Link
+          href={`/${slug}/listings`}
+          className="inline-flex items-center gap-1.5 font-body text-sm text-primary hover:text-primary/80 transition-colors mt-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to listings
+        </Link>
+      </div>
+    )
   }
-}
 
-export async function generateMetadata({ params }: Props) {
-  const { city: slug, id } = await params
-  const supabase = await createClient()
-
-  const { data: listing } = await supabase
-    .from('listings')
-    .select('title, cities(name)')
-    .eq('id', id)
-    .single()
-
-  if (!listing) return { title: 'Listing not found' }
-
-  const cityName = (listing.cities as unknown as City)?.name ?? slug
-  return {
-    title: `${listing.title} - ${cityName} - Homeys World`,
+  if (!listing || !city) {
+    return (
+      <div className="pt-24 pb-16 px-4 sm:px-6 max-w-4xl mx-auto text-center">
+        <p className="font-body text-muted-foreground">Loading...</p>
+      </div>
+    )
   }
-}
 
-export default async function ListingDetailPage({ params }: Props) {
-  const { city: slug, id } = await params
-  const supabase = await createClient()
-
-  // Fetch listing with city
-  const { data: listing } = await supabase
-    .from('listings')
-    .select('*, cities(*)')
-    .eq('id', id)
-    .single()
-
-  if (!listing) notFound()
-
-  const city = listing.cities as unknown as City
-  if (!city || city.slug !== slug) notFound()
-
-  const typedListing = listing as unknown as Listing
-  const typeLabel = LISTING_TYPES[typedListing.type]
-  const isLooking = typedListing.type.startsWith('looking_for')
-
-  // Fire-and-forget view count increment
-  incrementViewCount(typedListing.id)
-
-  const PLACEHOLDER_GRADIENTS = [
-    'from-primary/20 to-accent',
-    'from-secondary/20 to-muted',
-    'from-accent to-primary/10',
-    'from-muted to-secondary/10',
-  ]
+  const typeLabel = LISTING_TYPES[listing.type]
+  const isLooking = listing.type.startsWith('looking_for')
 
   return (
     <div className="pt-24 pb-16 px-4 sm:px-6 max-w-4xl mx-auto">
+      {/* Success toast */}
+      {showSuccess && (
+        <div className="mb-6 flex items-center gap-2 font-body text-sm text-primary bg-primary/10 border border-primary/20 rounded-2xl px-5 py-3 animate-fade-in">
+          <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Your listing is live! People can now find it when browsing {city.name}.
+        </div>
+      )}
+
       {/* Back link */}
       <Link
         href={`/${city.slug}/listings`}
@@ -102,16 +156,16 @@ export default async function ListingDetailPage({ params }: Props) {
       </Link>
 
       {/* Photos */}
-      {typedListing.photo_urls && typedListing.photo_urls.length > 0 ? (
+      {listing.photo_urls && listing.photo_urls.length > 0 ? (
         <div className="flex gap-3 overflow-x-auto pb-2 mb-8 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory scrollbar-hide">
-          {typedListing.photo_urls.map((url, i) => (
+          {listing.photo_urls.map((url, i) => (
             <div
               key={i}
               className="shrink-0 w-[80vw] sm:w-[400px] aspect-[4/3] rounded-2xl overflow-hidden border border-border shadow-[0_4px_20px_rgba(93,112,82,0.08)]"
             >
               <img
                 src={url}
-                alt={`${typedListing.title} - Photo ${i + 1}`}
+                alt={`${listing.title} - Photo ${i + 1}`}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -122,7 +176,7 @@ export default async function ListingDetailPage({ params }: Props) {
           className={`w-full aspect-[16/7] rounded-2xl overflow-hidden border border-border mb-8 bg-gradient-to-br ${PLACEHOLDER_GRADIENTS[0]} flex items-center justify-center`}
         >
           <span className="font-heading text-5xl text-foreground/10">
-            {typedListing.title.charAt(0)}
+            {listing.title.charAt(0)}
           </span>
         </div>
       )}
@@ -142,69 +196,69 @@ export default async function ListingDetailPage({ params }: Props) {
               >
                 {typeLabel}
               </span>
-              {typedListing.neighborhood && (
+              {listing.neighborhood && (
                 <span className="inline-flex items-center gap-1 text-xs font-body text-muted-foreground">
                   <MapPin className="w-3 h-3" />
-                  {typedListing.neighborhood}
+                  {listing.neighborhood}
                 </span>
               )}
             </div>
             <h1 className="font-heading text-2xl sm:text-3xl font-bold text-foreground leading-tight">
-              {typedListing.title}
+              {listing.title}
             </h1>
           </div>
 
           {/* Price */}
           <div className="font-heading text-3xl sm:text-4xl font-bold text-primary">
-            {formatPrice(typedListing.monthly_rent, city.currency)}
+            {formatPrice(listing.monthly_rent, city.currency)}
           </div>
 
           {/* Details row */}
           <div className="flex flex-wrap gap-4 text-sm font-body text-foreground/70">
-            {typedListing.bedrooms != null && (
+            {listing.bedrooms != null && (
               <span className="inline-flex items-center gap-1.5 bg-muted/60 px-3 py-1.5 rounded-full">
                 <Bed className="w-4 h-4 text-primary/60" />
-                {typedListing.bedrooms} bed{typedListing.bedrooms !== 1 ? 's' : ''}
+                {listing.bedrooms} bed{listing.bedrooms !== 1 ? 's' : ''}
               </span>
             )}
-            {typedListing.bathrooms != null && (
+            {listing.bathrooms != null && (
               <span className="inline-flex items-center gap-1.5 bg-muted/60 px-3 py-1.5 rounded-full">
                 <Bath className="w-4 h-4 text-primary/60" />
-                {typedListing.bathrooms} bath{typedListing.bathrooms !== 1 ? 's' : ''}
+                {listing.bathrooms} bath{listing.bathrooms !== 1 ? 's' : ''}
               </span>
             )}
-            {typedListing.move_in_date && (
+            {listing.move_in_date && (
               <span className="inline-flex items-center gap-1.5 bg-muted/60 px-3 py-1.5 rounded-full">
                 <Calendar className="w-4 h-4 text-primary/60" />
-                Move in: {formatDate(typedListing.move_in_date)}
+                Move in: {formatDate(listing.move_in_date)}
               </span>
             )}
-            {typedListing.move_out_date && (
+            {listing.move_out_date && (
               <span className="inline-flex items-center gap-1.5 bg-muted/60 px-3 py-1.5 rounded-full">
                 <Clock className="w-4 h-4 text-primary/60" />
-                Until: {formatDate(typedListing.move_out_date)}
+                Until: {formatDate(listing.move_out_date)}
               </span>
             )}
           </div>
 
           {/* Description */}
-          {typedListing.description && (
+          {listing.description && (
             <div>
               <h2 className="font-heading text-lg font-semibold text-foreground mb-2">About</h2>
               <p className="font-body text-sm text-foreground/80 leading-relaxed whitespace-pre-line">
-                {typedListing.description}
+                {listing.description}
               </p>
             </div>
           )}
 
           {/* Amenities */}
-          {typedListing.amenities && typedListing.amenities.length > 0 && (
+          {listing.amenities && listing.amenities.length > 0 && (
             <div>
               <h2 className="font-heading text-lg font-semibold text-foreground mb-3">
                 Amenities
               </h2>
               <div className="flex flex-wrap gap-2">
-                {typedListing.amenities.map((a) => (
+                {listing.amenities.map((a) => (
                   <span
                     key={a}
                     className="inline-flex px-3 py-1.5 rounded-full bg-accent/60 text-xs font-body font-medium text-foreground/70 border border-border/50"
@@ -221,24 +275,24 @@ export default async function ListingDetailPage({ params }: Props) {
         <div className="space-y-4">
           {/* Contact card */}
           <RevealContact
-            contactEmail={typedListing.contact_email}
-            contactPhone={typedListing.contact_phone ?? undefined}
-            contactSocial={typedListing.contact_social ?? undefined}
-            posterName={typedListing.poster_first_name}
+            contactEmail={listing.contact_email}
+            contactPhone={listing.contact_phone ?? undefined}
+            contactSocial={listing.contact_social ?? undefined}
+            posterName={listing.poster_first_name}
           />
 
           {/* Meta info */}
           <div className="bg-white/60 backdrop-blur-sm border border-border rounded-2xl p-5 space-y-3 shadow-[0_2px_12px_rgba(93,112,82,0.06)]">
             <div className="flex items-center gap-2 text-xs font-body text-muted-foreground">
               <Eye className="w-3.5 h-3.5" />
-              {typedListing.view_count} view{typedListing.view_count !== 1 ? 's' : ''}
+              {listing.view_count} view{listing.view_count !== 1 ? 's' : ''}
             </div>
             <div className="flex items-center gap-2 text-xs font-body text-muted-foreground">
               <Calendar className="w-3.5 h-3.5" />
-              Posted {formatDate(typedListing.created_at)}
+              Posted {formatDate(listing.created_at)}
             </div>
             <div className="pt-2 border-t border-border/50">
-              <ReportDialog listingId={typedListing.id} />
+              <ReportDialog listingId={listing.id} />
             </div>
           </div>
         </div>

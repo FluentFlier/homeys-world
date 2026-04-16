@@ -1,46 +1,70 @@
-import { redirect, notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase-server'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { insforge } from '@/lib/insforge'
 import type { City } from '@/lib/types'
 import { PostForm } from './post-form'
+import { Loader2 } from 'lucide-react'
 
-interface Props {
-  params: Promise<{ city: string }>
-}
+export default function PostListingPage() {
+  const params = useParams<{ city: string }>()
+  const router = useRouter()
+  const slug = params.city
 
-export async function generateMetadata({ params }: Props) {
-  const { city: slug } = await params
-  const supabase = await createClient()
-  const { data: city } = await supabase
-    .from('cities')
-    .select('name')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
+  const [city, setCity] = useState<City | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
 
-  if (!city) return { title: 'City not found' }
-  return { title: `Post a Listing in ${city.name} - Homeys World` }
-}
+  useEffect(() => {
+    async function init() {
+      const {
+        data: { user },
+      } = await insforge.auth.getCurrentUser()
 
-export default async function PostListingPage({ params }: Props) {
-  const { city: slug } = await params
-  const supabase = await createClient()
+      if (!user) {
+        router.push(`/sign-in?next=/${slug}/post`)
+        return
+      }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+      setUser(user)
 
-  if (!user) {
-    redirect(`/sign-in?next=/${slug}/post`)
+      const { data: cityData } = await insforge.database
+        .from('cities')
+        .select('*')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .single()
+
+      if (!cityData) {
+        setNotFound(true)
+        setLoading(false)
+        return
+      }
+
+      setCity(cityData as City)
+      setLoading(false)
+    }
+
+    init()
+  }, [slug, router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-28 pb-20 px-4 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
-  const { data: city } = await supabase
-    .from('cities')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .single()
-
-  if (!city) notFound()
+  if (notFound || !city || !user) {
+    return (
+      <div className="min-h-screen pt-28 pb-20 px-4 flex items-center justify-center">
+        <p className="font-body text-sm text-muted-foreground">City not found.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen pt-28 pb-20 px-4">
@@ -51,12 +75,12 @@ export default async function PostListingPage({ params }: Props) {
           </h1>
           <p className="font-body text-sm text-muted-foreground mt-2">
             Share your place or find a roommate in{' '}
-            <span className="font-medium text-foreground">{(city as City).name}</span>
+            <span className="font-medium text-foreground">{city.name}</span>
           </p>
         </div>
 
         <PostForm
-          city={city as City}
+          city={city}
           userEmail={user.email ?? ''}
           userId={user.id}
         />

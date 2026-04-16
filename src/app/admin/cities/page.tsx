@@ -1,4 +1,8 @@
-import { createClient } from '@/lib/supabase-server'
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { insforge } from '@/lib/insforge'
 import type { City } from '@/lib/types'
 import {
   Shield,
@@ -7,82 +11,103 @@ import {
   ToggleRight,
   Globe,
   MapPin,
+  Loader2,
 } from 'lucide-react'
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? '')
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
   .split(',')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean)
 
-async function addCity(formData: FormData) {
-  'use server'
-  const slug = (formData.get('slug') as string).trim().toLowerCase()
-  const name = (formData.get('name') as string).trim()
-  const country = (formData.get('country') as string).trim()
-  const currency = (formData.get('currency') as string).trim() || 'USD'
-  const neighborhoodsRaw = (formData.get('neighborhoods') as string).trim()
-  const neighborhoods = neighborhoodsRaw
-    ? neighborhoodsRaw.split(',').map((n) => n.trim()).filter(Boolean)
-    : []
+export default function AdminCitiesPage() {
+  const router = useRouter()
 
-  if (!slug || !name || !country) return
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [allCities, setAllCities] = useState<City[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const supabase = await (await import('@/lib/supabase-server')).createClient()
+  const fetchCities = useCallback(async () => {
+    const { data: cities } = await insforge.database
+      .from('cities')
+      .select('*')
+      .order('name', { ascending: true })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    setAllCities((cities ?? []) as City[])
+  }, [])
 
-  if (!user || !ADMIN_EMAILS.includes(user.email?.toLowerCase() ?? '')) return
+  useEffect(() => {
+    async function init() {
+      const {
+        data: { user },
+      } = await insforge.auth.getCurrentUser()
 
-  await supabase.from('cities').insert({
-    slug,
-    name,
-    country,
-    currency,
-    neighborhoods,
-    is_active: true,
-    listing_count: 0,
-  })
+      if (!user) {
+        router.push('/sign-in?next=/admin/cities')
+        return
+      }
 
-  const { revalidatePath } = await import('next/cache')
-  revalidatePath('/admin/cities')
-}
+      setUser(user)
 
-async function toggleCity(formData: FormData) {
-  'use server'
-  const id = formData.get('id') as string
-  const active = formData.get('active') === 'true'
+      const admin = ADMIN_EMAILS.includes(user.email?.toLowerCase() ?? '')
+      setIsAdmin(admin)
 
-  const supabase = await (await import('@/lib/supabase-server')).createClient()
+      if (admin) {
+        await fetchCities()
+      }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+      setLoading(false)
+    }
 
-  if (!user || !ADMIN_EMAILS.includes(user.email?.toLowerCase() ?? '')) return
+    init()
+  }, [router, fetchCities])
 
-  await supabase.from('cities').update({ is_active: active }).eq('id', id)
+  const handleAddCity = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!user || !isAdmin) return
 
-  const { revalidatePath } = await import('next/cache')
-  revalidatePath('/admin/cities')
-}
+    const formData = new FormData(e.currentTarget)
+    const slug = (formData.get('slug') as string).trim().toLowerCase()
+    const name = (formData.get('name') as string).trim()
+    const country = (formData.get('country') as string).trim()
+    const currency = (formData.get('currency') as string).trim() || 'USD'
+    const neighborhoodsRaw = (formData.get('neighborhoods') as string).trim()
+    const neighborhoods = neighborhoodsRaw
+      ? neighborhoodsRaw.split(',').map((n) => n.trim()).filter(Boolean)
+      : []
 
-export const metadata = {
-  title: 'Admin - Cities - Homeys World',
-}
+    if (!slug || !name || !country) return
 
-export default async function AdminCitiesPage() {
-  const supabase = await createClient()
+    await insforge.database.from('cities').insert([{
+      slug,
+      name,
+      country,
+      currency,
+      neighborhoods,
+      is_active: true,
+      listing_count: 0,
+    }])
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    await fetchCities()
+    e.currentTarget.reset()
+  }
 
-  if (
-    !user ||
-    !ADMIN_EMAILS.includes(user.email?.toLowerCase() ?? '')
-  ) {
+  const handleToggleCity = async (id: string, active: boolean) => {
+    if (!user || !isAdmin) return
+
+    await insforge.database.from('cities').update({ is_active: active }).eq('id', id)
+    await fetchCities()
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-28 pb-20 px-4 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
     return (
       <div className="min-h-screen pt-28 pb-20 px-4 flex items-center justify-center">
         <div className="text-center">
@@ -99,13 +124,6 @@ export default async function AdminCitiesPage() {
       </div>
     )
   }
-
-  const { data: cities } = await supabase
-    .from('cities')
-    .select('*')
-    .order('name', { ascending: true })
-
-  const allCities = (cities ?? []) as City[]
 
   return (
     <div className="min-h-screen pt-28 pb-20 px-4">
@@ -126,7 +144,7 @@ export default async function AdminCitiesPage() {
 
         {/* Add city form */}
         <form
-          action={addCity}
+          onSubmit={handleAddCity}
           className="bg-white border border-border rounded-2xl p-6 mb-8 shadow-sm"
         >
           <h2 className="font-heading text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -246,25 +264,18 @@ export default async function AdminCitiesPage() {
                 )}
               </div>
 
-              <form action={toggleCity} className="shrink-0">
-                <input type="hidden" name="id" value={city.id} />
-                <input
-                  type="hidden"
-                  name="active"
-                  value={city.is_active ? 'false' : 'true'}
-                />
-                <button
-                  type="submit"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  title={city.is_active ? 'Deactivate' : 'Activate'}
-                >
-                  {city.is_active ? (
-                    <ToggleRight className="w-8 h-8 text-primary" />
-                  ) : (
-                    <ToggleLeft className="w-8 h-8" />
-                  )}
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => handleToggleCity(city.id, !city.is_active)}
+                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                title={city.is_active ? 'Deactivate' : 'Activate'}
+              >
+                {city.is_active ? (
+                  <ToggleRight className="w-8 h-8 text-primary" />
+                ) : (
+                  <ToggleLeft className="w-8 h-8" />
+                )}
+              </button>
             </div>
           ))}
 

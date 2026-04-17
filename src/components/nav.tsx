@@ -37,7 +37,7 @@ export function Nav() {
   const links = [
     { label: 'Browse', href: '/' },
     { label: 'Roommates', href: '/profiles' },
-    { label: 'Stays', href: citySlug ? `/${citySlug}/couches` : '/' },
+    { label: 'Stays', href: '/stays' },
     { label: 'About', href: '/about' },
   ]
 

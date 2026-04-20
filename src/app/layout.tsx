@@ -33,8 +33,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${nunito.variable}`}>
-      <body className="min-h-screen flex flex-col">
+    <html lang="en" className={`${fraunces.variable} ${nunito.variable}`} suppressHydrationWarning>
+      <body className="min-h-screen flex flex-col" suppressHydrationWarning>
+        <div className="bg-red-600 text-white text-[10px] py-1 text-center font-bold">
+          VERSION 2.0 - NEW FEATURES ENABLED
+        </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (window.location.hash === '#cities') {
+                window.location.href = '/cities';
+              }
+            `,
+          }}
+        />
         <Nav />
         <main className="flex-1">{children}</main>
         <Footer />

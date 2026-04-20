@@ -16,7 +16,8 @@ import {
 } from 'lucide-react'
 import { insforge } from '@/lib/insforge'
 import type { Profile } from '@/lib/types'
-import { LIFESTYLE_LABELS, formatBudget, formatDate } from '@/lib/types'
+import { LIFESTYLE_LABELS, HOBBY_LABELS, formatBudget, formatDate } from '@/lib/types'
+import { calculateCompatibility, getCompatibilityColor } from '@/lib/utils'
 import { Blob } from '@/components/blob'
 
 export default function ProfileDetailPage() {
@@ -25,6 +26,7 @@ export default function ProfileDetailPage() {
   const id = params.id as string
 
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [myProfile, setMyProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [contactRevealed, setContactRevealed] = useState(false)
@@ -39,16 +41,26 @@ export default function ProfileDetailPage() {
       }
 
       try {
-        const { data, error } = await insforge.database
-          .from('profiles')
-          .select('*, cities(*)')
-          .eq('id', id)
-          .single()
+        const [targetProfile, myProfileRes] = await Promise.all([
+          insforge.database
+            .from('profiles')
+            .select('*, cities(*)')
+            .eq('id', id)
+            .single(),
+          insforge.database
+            .from('profiles')
+            .select('*')
+            .eq('user_id', authData.user.id)
+            .single()
+        ])
 
-        if (error || !data) {
+        if (targetProfile.error || !targetProfile.data) {
           setNotFound(true)
         } else {
-          setProfile(data as Profile)
+          setProfile(targetProfile.data as Profile)
+          if (myProfileRes.data) {
+            setMyProfile(myProfileRes.data as Profile)
+          }
         }
       } catch {
         setNotFound(true)
@@ -85,6 +97,7 @@ export default function ProfileDetailPage() {
 
   const initial = profile.display_name?.charAt(0)?.toUpperCase() ?? '?'
   const city = profile.cities
+  const compatibility = myProfile && profile.id !== myProfile.id ? calculateCompatibility(myProfile, profile) : null
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -136,12 +149,19 @@ export default function ProfileDetailPage() {
                 </div>
 
                 {/* City badge */}
-                {city && (
-                  <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary font-body text-xs font-semibold">
-                    <MapPin className="w-3 h-3" />
-                    {city.name}, {city.country}
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+                  {city && (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary font-body text-xs font-semibold">
+                      <MapPin className="w-3 h-3" />
+                      {city.name}, {city.country}
+                    </div>
+                  )}
+                  {compatibility !== null && (
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-body text-xs font-semibold ${getCompatibilityColor(compatibility)}`}>
+                      {compatibility}% Compatible
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -193,6 +213,25 @@ export default function ProfileDetailPage() {
                       className="font-body text-xs px-3.5 py-2 rounded-full border border-primary/20 bg-primary/5 text-primary font-medium"
                     >
                       {LIFESTYLE_LABELS[item] ?? item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Hobbies chips */}
+            {profile.hobbies && profile.hobbies.length > 0 && (
+              <div>
+                <h2 className="font-heading text-lg font-semibold text-foreground mb-3">
+                  Interests & Hobbies
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {profile.hobbies.map((item) => (
+                    <span
+                      key={item}
+                      className="font-body text-xs px-3.5 py-2 rounded-full border border-secondary/20 bg-secondary/5 text-secondary font-medium"
+                    >
+                      {HOBBY_LABELS[item] ?? item}
                     </span>
                   ))}
                 </div>

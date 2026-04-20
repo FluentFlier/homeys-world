@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { insforge } from '@/lib/insforge'
 import type { Listing } from '@/lib/types'
 import { LISTING_TYPES, formatPrice, formatDate } from '@/lib/types'
+import { ListingCard } from '@/components/listing-card'
 import {
   Plus,
   MapPin,
@@ -16,24 +17,38 @@ import {
   Pencil,
   Inbox,
   Loader2,
+  Heart,
 } from 'lucide-react'
 
 export default function MyListingsPage() {
   const router = useRouter()
-  const [currentTab, setCurrentTab] = useState<'active' | 'expired'>('active')
+  const [currentTab, setCurrentTab] = useState<'active' | 'expired' | 'favorites'>('active')
 
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
   const [allListings, setAllListings] = useState<Listing[]>([])
+  const [favorites, setFavorites] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchListings = useCallback(async (userId: string) => {
-    const { data: listings } = await insforge.database
-      .from('listings')
-      .select('*, cities(*)')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+    const [listingsRes, favoritesRes] = await Promise.all([
+      insforge.database
+        .from('listings')
+        .select('*, cities(*)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }),
+      insforge.database
+        .from('favorites')
+        .select('listing_id, listings(*, cities(*))')
+        .eq('user_id', userId)
+    ])
 
-    setAllListings((listings ?? []) as Listing[])
+    setAllListings((listingsRes.data ?? []) as Listing[])
+    
+    // Extract listings from favorites join
+    const favListings = (favoritesRes.data ?? [])
+      .map((f: any) => f.listings)
+      .filter(Boolean) as Listing[]
+    setFavorites(favListings)
   }, [])
 
   useEffect(() => {
@@ -145,7 +160,7 @@ export default function MyListingsPage() {
                 : 'bg-muted text-muted-foreground hover:bg-accent'
             }`}
           >
-            Active ({active.length})
+            My Posts ({active.length})
           </button>
           <button
             onClick={() => setCurrentTab('expired')}
@@ -157,10 +172,42 @@ export default function MyListingsPage() {
           >
             Expired ({expired.length})
           </button>
+          <button
+            onClick={() => setCurrentTab('favorites')}
+            className={`font-body text-sm px-4 py-2 rounded-full transition-colors ${
+              currentTab === 'favorites'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-accent'
+            }`}
+          >
+            <Heart className="w-3.5 h-3.5 inline mr-1" />
+            Saved ({favorites.length})
+          </button>
         </div>
 
         {/* Listings */}
-        {display.length === 0 ? (
+        {currentTab === 'favorites' ? (
+          favorites.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                <Heart className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h2 className="font-heading text-xl font-semibold text-foreground mb-2">No saved listings</h2>
+              <p className="font-body text-sm text-muted-foreground mb-6">Start saving listings to keep track of them here.</p>
+              <Link href="/" className="inline-flex items-center gap-1.5 font-body text-sm font-semibold bg-primary text-primary-foreground rounded-full px-6 py-2.5 hover:bg-primary/90 transition-colors">
+                Browse Listings
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {favorites.map((listing, idx) => (
+                <div key={listing.id} className="relative group">
+                  <ListingCard listing={listing} city={listing.cities!} index={idx} />
+                </div>
+              ))}
+            </div>
+          )
+        ) : display.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <Inbox className="w-8 h-8 text-muted-foreground" />

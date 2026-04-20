@@ -18,7 +18,7 @@ import type { City, Listing } from '@/lib/types'
 import { LISTING_TYPES, AMENITIES } from '@/lib/types'
 
 // Lazy load map to avoid SSR issues and reduce initial bundle
-const ListingMap = dynamic(() => import('@/components/listing-map').then(m => ({ default: m.ListingMap })), {
+const ListingMap = dynamic(() => import('@/components/listing-map'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[400px] lg:h-[500px] rounded-2xl border border-border bg-muted/30 flex items-center justify-center">
@@ -64,6 +64,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
   const initialAmenities = searchParams.get('amenities')?.split(',').filter(Boolean) ?? []
   const initialMinPrice = searchParams.get('min_price') ?? ''
   const initialMaxPrice = searchParams.get('max_price') ?? ''
+  const initialSearch = searchParams.get('q') ?? ''
   const initialSort = (searchParams.get('sort') as SortOption) ?? 'newest'
 
   const [types, setTypes] = useState<string[]>(initialTypes)
@@ -72,6 +73,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
   const [amenities, setAmenities] = useState<string[]>(initialAmenities)
   const [minPrice, setMinPrice] = useState(initialMinPrice)
   const [maxPrice, setMaxPrice] = useState(initialMaxPrice)
+  const [search, setSearch] = useState(initialSearch)
   const [sort, setSort] = useState<SortOption>(initialSort)
 
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid')
@@ -88,6 +90,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
       amenities: string[]
       minPrice: string
       maxPrice: string
+      search: string
       sort: SortOption
     }>) => {
       const t = overrides?.types ?? types
@@ -96,6 +99,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
       const a = overrides?.amenities ?? amenities
       const mn = overrides?.minPrice ?? minPrice
       const mx = overrides?.maxPrice ?? maxPrice
+      const q = overrides?.search ?? search
       const s = overrides?.sort ?? sort
 
       const params = new URLSearchParams()
@@ -105,6 +109,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
       if (a.length) params.set('amenities', a.join(','))
       if (mn) params.set('min_price', mn)
       if (mx) params.set('max_price', mx)
+      if (q) params.set('q', q)
       if (s !== 'newest') params.set('sort', s)
 
       const qs = params.toString()
@@ -158,6 +163,9 @@ export function BrowseClient({ city }: BrowseClientProps) {
       if (maxPrice) {
         query = query.lte('monthly_rent', parseInt(maxPrice))
       }
+      if (search) {
+        query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`)
+      }
 
       switch (sort) {
         case 'price_asc':
@@ -198,6 +206,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
     setAmenities([])
     setMinPrice('')
     setMaxPrice('')
+    setSearch('')
     setSort('newest')
     syncUrl({
       types: [],
@@ -206,6 +215,7 @@ export function BrowseClient({ city }: BrowseClientProps) {
       amenities: [],
       minPrice: '',
       maxPrice: '',
+      search: '',
       sort: 'newest',
     })
   }
@@ -216,10 +226,29 @@ export function BrowseClient({ city }: BrowseClientProps) {
     bedrooms.length > 0 ||
     amenities.length > 0 ||
     minPrice !== '' ||
-    maxPrice !== ''
+    maxPrice !== '' ||
+    search !== ''
 
   const filterContent = (
     <div className="space-y-6">
+      {/* Keyword Search */}
+      <div>
+        <h3 className="font-heading text-sm font-semibold text-foreground mb-2">Search</h3>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search keywords..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              syncUrl({ search: e.target.value })
+            }}
+            className="w-full rounded-full bg-white/50 border border-border pl-9 pr-4 py-2 text-sm font-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+      </div>
+
       {/* Listing Type */}
       <div>
         <h3 className="font-heading text-sm font-semibold text-foreground mb-2">Listing Type</h3>
@@ -450,8 +479,12 @@ export function BrowseClient({ city }: BrowseClientProps) {
 
           {/* Map view */}
           {viewMode === 'map' && !loading && (
-            <div className="mb-6">
-              <ListingMap listings={listings} city={city} />
+            <div className="mb-6 h-[500px]">
+              <ListingMap 
+                listings={listings} 
+                center={[city.latitude || 51.505, city.longitude || -0.09]} 
+                zoom={12}
+              />
               <p className="font-body text-xs text-muted-foreground mt-2 text-center">
                 {listings.length} listing{listings.length !== 1 ? 's' : ''} shown on map
               </p>

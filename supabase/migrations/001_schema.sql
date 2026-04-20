@@ -119,3 +119,39 @@ CREATE POLICY "Users can update own listings" ON listings FOR UPDATE USING (true
 CREATE POLICY "Users can delete own listings" ON listings FOR DELETE USING (true);
 CREATE POLICY "Anyone can request a city" ON city_requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Anyone can report a listing" ON listing_reports FOR INSERT WITH CHECK (true);
+
+-- Profiles table
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT UNIQUE NOT NULL,
+  display_name TEXT NOT NULL,
+  bio TEXT,
+  age_range TEXT,
+  gender TEXT,
+  occupation TEXT,
+  budget_min INTEGER,
+  budget_max INTEGER,
+  move_in_date DATE,
+  lifestyle TEXT[] DEFAULT '{}',
+  contact_email TEXT,
+  is_active BOOLEAN DEFAULT true,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Favorites table
+CREATE TABLE favorites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  listing_id UUID REFERENCES listings(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, listing_id)
+);
+
+-- RLS for new tables
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Profiles are public" ON profiles FOR SELECT USING (true);
+CREATE POLICY "Users can manage own profile" ON profiles FOR ALL USING (true);
+CREATE POLICY "Users can manage own favorites" ON favorites FOR ALL USING (true);

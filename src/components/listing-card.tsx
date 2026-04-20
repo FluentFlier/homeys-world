@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Calendar, MapPin } from 'lucide-react'
 import type { Listing, City } from '@/lib/types'
 import { formatPrice, formatDate, LISTING_TYPES } from '@/lib/types'
+import { FavoriteButton } from './favorite-button'
 
 const RADIUS_PATTERNS = [
   'rounded-[24px_8px_24px_8px]',
@@ -67,6 +68,11 @@ export function ListingCard({ listing, city, index }: ListingCardProps) {
         >
           {typeLabel}
         </span>
+
+        <FavoriteButton
+          listingId={listing.id}
+          className="absolute top-3 right-3 shadow-sm"
+        />
       </div>
 
       {/* Content */}

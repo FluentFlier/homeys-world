@@ -1,30 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { MapPin, Search, MessageCircle, Globe, Users, Sofa } from 'lucide-react'
+import { Search, MessageCircle, Users, Sofa } from 'lucide-react'
 import { insforge } from '@/lib/insforge'
-import type { City } from '@/lib/types'
 import { Blob } from '@/components/blob'
 
 export default function HomePage() {
-  const [cities, setCities] = useState<City[]>([])
-  const [citiesLoading, setCitiesLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
-
-  useEffect(() => {
-    insforge.database
-      .from('cities')
-      .select('*')
-      .eq('is_active', true)
-      .order('listing_count', { ascending: false })
-      .then(({ data }) => {
-        setCities((data as City[]) ?? [])
-        setCitiesLoading(false)
-      }, () => {
-        setCitiesLoading(false)
-      })
-  }, [])
 
   async function handleRequestCity(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -54,7 +37,7 @@ export default function HomePage() {
 
         <div className="relative max-w-3xl mx-auto text-center">
           <h1 className="font-heading text-5xl sm:text-6xl lg:text-7xl font-bold text-foreground leading-[1.1] tracking-tight">
-            Find your next place.{' '}
+            Homeys World 2.0.{' '}
             <span className="text-primary">Find your people.</span>
           </h1>
           <p className="mt-6 font-body text-lg sm:text-xl text-muted-foreground max-w-xl mx-auto leading-relaxed">
@@ -62,16 +45,16 @@ export default function HomePage() {
             in cities around the world. No fees, no middleman.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <a
-              href="#cities"
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
+            <Link
+              href="/cities"
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105 shadow-lg shadow-primary/20"
             >
               <Search className="w-4 h-4" />
-              Browse cities
-            </a>
+              Explore All Available Cities
+            </Link>
             <Link
               href="/profiles"
-              className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105"
+              className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground font-body font-semibold px-6 py-3 rounded-full transition-transform hover:scale-105 shadow-lg shadow-secondary/10"
             >
               <Users className="w-4 h-4" />
               Find roommates
@@ -84,68 +67,6 @@ export default function HomePage() {
             >
               <MessageCircle className="w-4 h-4" />
               Join community
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* City picker */}
-      <section id="cities" className="relative overflow-hidden py-20 px-4">
-        <Blob className="w-[350px] h-[350px] -top-20 right-10 opacity-20" color="secondary" />
-
-        <div className="relative max-w-5xl mx-auto">
-          <h2 className="font-heading text-3xl sm:text-4xl font-bold text-foreground text-center mb-4">
-            Pick a city
-          </h2>
-          <p className="font-body text-muted-foreground text-center mb-12 max-w-md mx-auto">
-            We are growing one city at a time. Jump in and find your people.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {citiesLoading && cities.length === 0 && Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-6 animate-pulse"
-              >
-                <div className="h-5 bg-muted rounded-full w-2/3 mb-2" />
-                <div className="h-4 bg-muted rounded-full w-1/3 mb-3" />
-                <div className="h-4 bg-muted rounded-full w-1/4" />
-              </div>
-            ))}
-            {cities.map((city) => (
-              <Link
-                key={city.id}
-                href={`/${city.slug}`}
-                className="group relative rounded-[2rem] border border-border bg-white/60 backdrop-blur-sm p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-heading text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
-                      {city.name}
-                    </h3>
-                    <p className="font-body text-sm text-muted-foreground mt-0.5">
-                      {city.country}
-                    </p>
-                  </div>
-                  <MapPin className="w-5 h-5 text-secondary shrink-0 mt-1" />
-                </div>
-                <p className="font-body text-sm font-medium text-primary">
-                  {city.listing_count} {city.listing_count === 1 ? 'listing' : 'listings'}
-                </p>
-              </Link>
-            ))}
-
-            <a
-              href="#request-city"
-              className="group relative rounded-[2rem] border-2 border-dashed border-border bg-muted/30 p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col items-center justify-center text-center min-h-[140px]"
-            >
-              <Globe className="w-8 h-8 text-secondary mb-2 group-hover:scale-110 transition-transform" />
-              <p className="font-heading text-lg font-semibold text-foreground">
-                Your city?
-              </p>
-              <p className="font-body text-sm text-muted-foreground mt-1">
-                Request it below
-              </p>
             </a>
           </div>
         </div>

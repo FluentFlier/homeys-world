@@ -35,10 +35,10 @@ export function Nav() {
   }, [])
 
   const links = [
-    { label: 'Browse', href: '/' },
+    { label: 'Browse', href: '/cities' },
     { label: 'Roommates', href: '/profiles' },
+    { label: 'Messages', href: '/messages' },
     { label: 'Stays', href: '/stays' },
-    { label: 'About', href: '/about' },
   ]
 
   return (

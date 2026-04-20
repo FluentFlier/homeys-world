@@ -3,6 +3,8 @@ export interface City {
   slug: string
   name: string
   country: string
+  latitude: number | null
+  longitude: number | null
   neighborhoods: string[]
   currency: string
   is_active: boolean
@@ -21,6 +23,8 @@ export interface Listing {
   move_in_date: string | null
   move_out_date: string | null
   neighborhood: string | null
+  latitude: number | null
+  longitude: number | null
   bedrooms: number | null
   bathrooms: number | null
   amenities: string[]
@@ -51,6 +55,7 @@ export interface Profile {
   budget_max: number | null
   move_in_date: string | null
   lifestyle: string[]
+  hobbies: string[]
   social_links: Record<string, string>
   contact_email: string | null
   is_active: boolean
@@ -125,6 +130,36 @@ export const LIFESTYLE_LABELS: Record<string, string> = {
   student: 'Student',
   professional: 'Professional',
   lgbtq_friendly: 'LGBTQ+ Friendly',
+}
+
+export const HOBBY_OPTIONS = [
+  'cooking',
+  'gaming',
+  'hiking',
+  'reading',
+  'fitness',
+  'music',
+  'travel',
+  'art',
+  'coding',
+  'cinema',
+  'yoga',
+  'photography',
+] as const
+
+export const HOBBY_LABELS: Record<string, string> = {
+  cooking: 'Cooking',
+  gaming: 'Gaming',
+  hiking: 'Hiking',
+  reading: 'Reading',
+  fitness: 'Fitness',
+  music: 'Music',
+  travel: 'Travel',
+  art: 'Art',
+  coding: 'Coding',
+  cinema: 'Cinema',
+  yoga: 'Yoga',
+  photography: 'Photography',
 }
 
 export function formatPrice(amount: number | null, currency: string) {

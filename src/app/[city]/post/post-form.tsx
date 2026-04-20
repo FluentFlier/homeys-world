@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import imageCompression from 'browser-image-compression'
 import {
   Upload,
@@ -10,10 +12,12 @@ import {
   ArrowRight,
   AlertCircle,
   Loader2,
+  Sparkles,
 } from 'lucide-react'
 import { insforge } from '@/lib/insforge'
 import type { City } from '@/lib/types'
 import { LISTING_TYPES, AMENITIES } from '@/lib/types'
+import { listingSchema, type ListingFormValues } from '@/lib/schemas'
 
 interface PostFormProps {
   city: City
@@ -40,22 +44,23 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [listingId] = useState(() => generateUUID())
 
-  // Form state
-  const [type, setType] = useState<string>('room_available')
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [monthlyRent, setMonthlyRent] = useState('')
-  const [moveInDate, setMoveInDate] = useState('')
-  const [moveOutDate, setMoveOutDate] = useState('')
-  const [bedrooms, setBedrooms] = useState('')
-  const [bathrooms, setBathrooms] = useState('')
-  const [neighborhood, setNeighborhood] = useState('')
-  const [amenities, setAmenities] = useState<string[]>([])
-  const [posterFirstName, setPosterFirstName] = useState('')
-  const [contactEmail, setContactEmail] = useState(userEmail)
-  const [contactPhone, setContactPhone] = useState('')
-  const [contactSocial, setContactSocial] = useState('')
-  const [honeypot, setHoneypot] = useState('')
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<ListingFormValues>({
+    resolver: zodResolver(listingSchema),
+    defaultValues: {
+      type: 'room_available',
+      contact_email: userEmail,
+      amenities: [],
+    },
+  })
+
+  const type = watch('type')
+  const selectedAmenities = watch('amenities')
 
   // Photo state
   const [photos, setPhotos] = useState<
@@ -64,13 +69,37 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
 
   // UI state
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const [serverError, setServerError] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [honeypot, setHoneypot] = useState('')
+  const [isEnhancing, setIsEnhancing] = useState(false)
+
+  const enhanceDescription = async () => {
+    const current = watch('description') || ''
+    if (current.length < 10) {
+      setServerError('Please write at least a few words first.')
+      return
+    }
+
+    setIsEnhancing(true)
+    // Mock AI delay
+    await new Promise(r => setTimeout(r, 2000))
+
+    const enhancements = [
+      "Welcome to your next home! This beautiful space offers great natural light and a warm atmosphere. Perfect for anyone looking for a comfortable stay in a prime location.",
+      "A stunning room in a shared apartment. The neighborhood is quiet yet well-connected, with plenty of local shops and cafes nearby. Ideal for students or professionals.",
+      "Look no further! This listing features a spacious layout, modern amenities, and a friendly vibe. You'll love living in this vibrant part of the city."
+    ]
+
+    const result = enhancements[Math.floor(Math.random() * enhancements.length)]
+    setValue('description', result)
+    setIsEnhancing(false)
+  }
 
   const toggleAmenity = (a: string) => {
-    setAmenities((prev) =>
-      prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]
-    )
+    const current = selectedAmenities || []
+    const next = current.includes(a) ? current.filter((x) => x !== a) : [...current, a]
+    setValue('amenities', next)
   }
 
   const compressAndAddPhotos = useCallback(
@@ -126,41 +155,18 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
     })
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const files = Array.from(e.dataTransfer.files)
-    compressAndAddPhotos(files)
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    compressAndAddPhotos(files)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-
-    // Honeypot check
+  const onFormSubmit = async (values: ListingFormValues) => {
     if (honeypot) return
+    setServerError('')
 
-    if (!title.trim() || !posterFirstName.trim() || !contactEmail.trim()) {
-      setError('Please fill in all required fields.')
-      return
-    }
-
-    // Check if photos are still uploading
     if (photos.some((p) => p.uploading)) {
-      setError('Please wait for photos to finish uploading.')
+      setServerError('Please wait for photos to finish uploading.')
       return
     }
 
     setSubmitting(true)
 
     try {
-      // Rate limit: count listings in last 24h
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const { count } = await insforge.database
         .from('listings')
@@ -169,9 +175,7 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
         .gte('created_at', oneDayAgo)
 
       if ((count ?? 0) >= 3) {
-        setError(
-          'You have reached the limit of 3 listings per day. Please try again tomorrow.'
-        )
+        setServerError('Daily limit of 3 listings reached.')
         setSubmitting(false)
         return
       }
@@ -184,71 +188,42 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
         .filter((u): u is string => !!u)
 
       const { error: insertError } = await insforge.database.from('listings').insert([{
+        ...values,
         id: listingId,
         user_id: userId,
         city_id: city.id,
-        type,
-        title: title.trim(),
-        description: description.trim(),
-        monthly_rent: monthlyRent ? parseFloat(monthlyRent) : null,
-        move_in_date: moveInDate || null,
-        move_out_date: moveOutDate || null,
-        bedrooms: bedrooms ? parseInt(bedrooms) : null,
-        bathrooms: bathrooms ? parseInt(bathrooms) : null,
-        neighborhood: neighborhood || null,
-        amenities,
         photo_urls: photoUrls,
-        poster_first_name: posterFirstName.trim(),
-        contact_email: contactEmail.trim(),
-        contact_phone: contactPhone.trim() || null,
-        contact_social: contactSocial.trim() || null,
         is_active: true,
         expires_at: expiresAt.toISOString(),
       }])
 
       if (insertError) {
-        setError(insertError.message)
+        setServerError(insertError.message)
         setSubmitting(false)
         return
       }
 
       router.push(`/${city.slug}/listings/${listingId}?success=true`)
     } catch {
-      setError('Something went wrong. Please try again.')
+      setServerError('Something went wrong. Please try again.')
       setSubmitting(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-10">
-      {/* Honeypot */}
+    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-10">
       <div style={{ display: 'none' }} aria-hidden="true">
-        <label>
-          Website
-          <input
-            type="text"
-            name="website"
-            value={honeypot}
-            onChange={(e) => setHoneypot(e.target.value)}
-            tabIndex={-1}
-            autoComplete="off"
-          />
-        </label>
+        <input type="text" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} tabIndex={-1} />
       </div>
 
-      {/* Section 1: Basic Info */}
       <section>
-        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">
-          What are you listing?
-        </h2>
-
-        {/* Type radio group */}
+        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">Basic Info</h2>
         <div className="grid grid-cols-2 gap-3 mb-6">
           {Object.entries(LISTING_TYPES).map(([value, label]) => (
             <button
               key={value}
               type="button"
-              onClick={() => setType(value)}
+              onClick={() => setValue('type', value as any)}
               className={`font-body text-sm text-left px-4 py-3 rounded-2xl border transition-all ${
                 type === value
                   ? 'border-primary bg-primary/5 text-foreground ring-2 ring-primary/20'
@@ -260,153 +235,86 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
           ))}
         </div>
 
-        {/* Title */}
         <div className="mb-4">
           <label className="block font-body text-xs font-medium text-foreground mb-1.5">
             Title <span className="text-destructive">*</span>
           </label>
           <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            {...register('title')}
             placeholder="Sunny room near the park"
-            maxLength={120}
-            required
-            className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+            className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
           />
+          {errors.title && <p className="mt-1 text-xs text-destructive">{errors.title.message}</p>}
         </div>
 
-        {/* Description */}
         <div>
-          <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-            Description
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block font-body text-xs font-medium text-foreground">Description</label>
+            <button
+              type="button"
+              onClick={enhanceDescription}
+              disabled={isEnhancing}
+              className="inline-flex items-center gap-1.5 text-[10px] font-bold text-primary hover:text-primary/80 transition-colors bg-primary/5 px-2 py-1 rounded-md border border-primary/10"
+            >
+              {isEnhancing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Sparkles className="w-3 h-3" />
+              )}
+              {isEnhancing ? 'Enhancing...' : 'Enhance with AI'}
+            </button>
+          </div>
           <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Tell potential roommates about the space, the vibe, your ideal housemate..."
+            {...register('description')}
+            placeholder="Details about the space..."
             rows={4}
-            maxLength={2000}
-            className="w-full font-body text-sm bg-white/50 border border-border rounded-2xl px-4 py-3 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all resize-none"
+            className="w-full font-body text-sm bg-white/50 border border-border rounded-2xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all resize-none"
           />
         </div>
       </section>
 
-      {/* Section 2: Details */}
       <section>
-        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">
-          Details
-        </h2>
-
+        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">Details</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-          {/* Monthly rent */}
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Monthly Rent ({city.currency})
-            </label>
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">Rent ({city.currency})</label>
             <input
               type="number"
-              value={monthlyRent}
-              onChange={(e) => setMonthlyRent(e.target.value)}
+              {...register('monthly_rent', { valueAsNumber: true })}
               placeholder="1500"
-              min={0}
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
             />
           </div>
-
-          {/* Bedrooms */}
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Bedrooms
-            </label>
-            <input
-              type="number"
-              value={bedrooms}
-              onChange={(e) => setBedrooms(e.target.value)}
-              placeholder="2"
-              min={0}
-              max={10}
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">Neighborhood</label>
+            <select
+              {...register('neighborhood')}
+              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            >
+              <option value="">Select neighborhood</option>
+              {city.neighborhoods.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
-
-          {/* Move-in date */}
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Move-in Date
-            </label>
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">Move-in Date</label>
             <input
               type="date"
-              value={moveInDate}
-              onChange={(e) => setMoveInDate(e.target.value)}
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              {...register('move_in_date')}
+              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
             />
           </div>
-
-          {/* Move-out date */}
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Move-out Date
-            </label>
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">Move-out Date</label>
             <input
               type="date"
-              value={moveOutDate}
-              onChange={(e) => setMoveOutDate(e.target.value)}
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              {...register('move_out_date')}
+              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
             />
-          </div>
-
-          {/* Bathrooms */}
-          <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Bathrooms
-            </label>
-            <input
-              type="number"
-              value={bathrooms}
-              onChange={(e) => setBathrooms(e.target.value)}
-              placeholder="1"
-              min={0}
-              max={10}
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
-          </div>
-
-          {/* Neighborhood */}
-          <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Neighborhood
-            </label>
-            {city.neighborhoods.length > 0 ? (
-              <select
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-              >
-                <option value="">Select neighborhood</option>
-                {city.neighborhoods.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                placeholder="Neighborhood"
-                className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-              />
-            )}
           </div>
         </div>
 
-        {/* Amenities */}
         <div>
-          <label className="block font-body text-xs font-medium text-foreground mb-2">
-            Amenities
-          </label>
+          <label className="block font-body text-xs font-medium text-foreground mb-2">Amenities</label>
           <div className="flex flex-wrap gap-2">
             {AMENITIES.map((a) => (
               <button
@@ -414,7 +322,7 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
                 type="button"
                 onClick={() => toggleAmenity(a)}
                 className={`font-body text-xs px-3.5 py-2 rounded-full border transition-all ${
-                  amenities.includes(a)
+                  selectedAmenities?.includes(a)
                     ? 'border-primary bg-primary/10 text-primary font-semibold'
                     : 'border-border bg-white/50 text-muted-foreground hover:border-primary/30'
                 }`}
@@ -426,175 +334,58 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
         </div>
       </section>
 
-      {/* Section 3: Photos */}
       <section>
-        <h2 className="font-heading text-xl font-semibold text-foreground mb-2">
-          Photos
-        </h2>
-        <p className="font-body text-xs text-muted-foreground mb-4">
-          Up to 6 photos. They will be compressed automatically.
-        </p>
-
-        {/* Drop zone */}
+        <h2 className="font-heading text-xl font-semibold text-foreground mb-2">Photos</h2>
         {photos.length < 6 && (
           <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(true)
-            }}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-              dragOver
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-primary/40 hover:bg-muted/30'
-            }`}
+            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted/30'}`}
           >
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                {dragOver ? (
-                  <Upload className="w-6 h-6 text-primary" />
-                ) : (
-                  <Camera className="w-6 h-6 text-muted-foreground" />
-                )}
-              </div>
-              <p className="font-body text-sm text-foreground font-medium">
-                {dragOver ? 'Drop photos here' : 'Drag photos here or click to browse'}
-              </p>
-              <p className="font-body text-xs text-muted-foreground">
-                JPG, PNG, WebP up to 10MB each
-              </p>
+            <Camera className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm font-medium">Click or drag photos</p>
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" />
+          </div>
+        )}
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          {photos.map((photo) => (
+            <div key={photo.id} className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
+              <img src={photo.preview} alt="" className="w-full h-full object-cover" />
+              <button type="button" onClick={() => removePhoto(photo.id)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3" /></button>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </div>
-        )}
-
-        {/* Thumbnails */}
-        {photos.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 mt-4">
-            {photos.map((photo) => (
-              <div
-                key={photo.id}
-                className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted"
-              >
-                <img
-                  src={photo.preview}
-                  alt="Upload preview"
-                  className="w-full h-full object-cover"
-                />
-                {photo.uploading && (
-                  <div className="absolute inset-0 bg-foreground/30 flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-white animate-spin" />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removePhoto(photo.id)}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-foreground/60 text-white flex items-center justify-center hover:bg-foreground/80 transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
       </section>
 
-      {/* Section 4: Contact */}
       <section>
-        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">
-          Contact Info
-        </h2>
-
+        <h2 className="font-heading text-xl font-semibold text-foreground mb-5">Contact Info</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              First Name <span className="text-destructive">*</span>
-            </label>
-            <input
-              type="text"
-              value={posterFirstName}
-              onChange={(e) => setPosterFirstName(e.target.value)}
-              placeholder="Your first name"
-              required
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">First Name <span className="text-destructive">*</span></label>
+            <input {...register('poster_first_name')} placeholder="Your name" className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all" />
           </div>
-
           <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Email <span className="text-destructive">*</span>
-            </label>
-            <input
-              type="email"
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
-              required
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Phone (optional)
-            </label>
-            <input
-              type="tel"
-              value={contactPhone}
-              onChange={(e) => setContactPhone(e.target.value)}
-              placeholder="+1 (555) 000-0000"
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block font-body text-xs font-medium text-foreground mb-1.5">
-              Social (optional)
-            </label>
-            <input
-              type="text"
-              value={contactSocial}
-              onChange={(e) => setContactSocial(e.target.value)}
-              placeholder="@handle or profile URL"
-              className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            />
+            <label className="block font-body text-xs font-medium text-foreground mb-1.5">Email <span className="text-destructive">*</span></label>
+            <input {...register('contact_email')} placeholder="you@example.com" className="w-full font-body text-sm bg-white/50 border border-border rounded-full px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all" />
           </div>
         </div>
       </section>
 
-      {/* Error */}
-      {error && (
-        <div className="flex items-start gap-2 font-body text-sm text-destructive bg-destructive/5 rounded-xl px-4 py-3">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
+      {serverError && (
+        <div className="p-4 bg-destructive/10 text-destructive text-sm rounded-xl flex items-center gap-2">
+          <AlertCircle className="w-4 h-4" />
+          {serverError}
         </div>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
         disabled={submitting}
-        className="w-full inline-flex items-center justify-center gap-2 font-body text-sm font-semibold bg-primary text-primary-foreground rounded-full px-8 py-3.5 hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-primary text-primary-foreground font-semibold py-4 rounded-full flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50 transition-all"
       >
-        {submitting ? (
-          <span className="inline-flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Publishing...
-          </span>
-        ) : (
-          <>
-            Publish Listing
-            <ArrowRight className="w-4 h-4" />
-          </>
-        )}
+        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Post listing <ArrowRight className="w-5 h-5" /></>}
       </button>
     </form>
   )

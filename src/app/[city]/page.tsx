@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Globe, Search, PenLine, Sofa } from 'lucide-react'
 import { insforge } from '@/lib/insforge'
-import { City, Listing } from '@/lib/types'
+import { City, Listing, formatBudget } from '@/lib/types'
 import { Blob } from '@/components/blob'
 import { ListingCard } from '@/components/listing-card'
 
@@ -185,6 +185,49 @@ export default function CityPage() {
           </div>
         </section>
       )}
+
+      {/* City Guide / SEO Section */}
+      <section className="relative overflow-hidden py-24 px-4">
+        <div className="relative max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="font-heading text-3xl font-bold text-foreground mb-4">
+                Moving to {city.name}?
+              </h2>
+              <p className="font-body text-base text-muted-foreground leading-relaxed mb-6">
+                Whether you&apos;re a student, professional, or digital nomad, finding the right place in {city.name} can be a challenge. Homeys World is here to make your transition smoother. Browse verified roommate profiles and unique living spaces across all major neighborhoods.
+              </p>
+              <ul className="space-y-3 font-body text-sm text-foreground/80">
+                <li className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  Free to post and browse
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  Direct connection with posters
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  Verified roommate compatibility
+                </li>
+              </ul>
+            </div>
+            <div className="bg-muted/50 rounded-[2.5rem] p-8 border border-border/50">
+              <h3 className="font-heading text-xl font-semibold text-foreground mb-4">Quick Tips</h3>
+              <div className="space-y-4">
+                <div className="bg-white/80 p-4 rounded-2xl shadow-sm">
+                  <p className="font-heading text-sm font-bold text-primary mb-1">Neighborhoods</p>
+                  <p className="font-body text-xs text-muted-foreground">Focus your search in {neighborhoods.slice(0, 3).join(', ')} for the best mix of culture and connectivity.</p>
+                </div>
+                <div className="bg-white/80 p-4 rounded-2xl shadow-sm">
+                  <p className="font-heading text-sm font-bold text-primary mb-1">Budgeting</p>
+                  <p className="font-body text-xs text-muted-foreground">Most rooms in {city.name} range between {formatBudget(500, 1500, city.currency)} per month.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Neighborhoods */}
       {neighborhoods.length > 0 && (

@@ -17,7 +17,7 @@ import {
 import { insforge } from '@/lib/insforge'
 import type { City } from '@/lib/types'
 import { LISTING_TYPES, AMENITIES } from '@/lib/types'
-import { listingSchema, type ListingFormValues } from '@/lib/schemas'
+import { listingSchema, type ListingFormValues, type ListingFormInput } from '@/lib/schemas'
 
 interface PostFormProps {
   city: City
@@ -50,7 +50,7 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
     setValue,
     watch,
     formState: { errors },
-  } = useForm<ListingFormValues>({
+  } = useForm<ListingFormInput, unknown, ListingFormValues>({
     resolver: zodResolver(listingSchema),
     defaultValues: {
       type: 'room_available',
@@ -153,6 +153,19 @@ export function PostForm({ city, userEmail, userId }: PostFormProps) {
       if (photo) URL.revokeObjectURL(photo.preview)
       return prev.filter((p) => p.id !== id)
     })
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : []
+    if (files.length) compressAndAddPhotos(files)
+    e.target.value = ''
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : []
+    if (files.length) compressAndAddPhotos(files)
   }
 
   const onFormSubmit = async (values: ListingFormValues) => {

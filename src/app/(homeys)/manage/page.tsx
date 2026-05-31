@@ -99,12 +99,12 @@ export default function AdminDashboard() {
                 <MapPin className="w-5 h-5 text-primary" />
                 City Management
               </h2>
-              <Link href="/admin/cities" className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors">
+              <Link href="/manage/cities" className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors">
                 <Plus className="w-4 h-4" />
               </Link>
             </div>
             <p className="font-body text-sm text-muted-foreground mb-6">Add new cities, manage neighborhoods, and toggle visibility.</p>
-            <Link href="/admin/cities" className="inline-flex items-center gap-2 font-body text-sm font-semibold text-primary hover:gap-3 transition-all">
+            <Link href="/manage/cities" className="inline-flex items-center gap-2 font-body text-sm font-semibold text-primary hover:gap-3 transition-all">
               Manage Cities <ArrowRight className="w-4 h-4" />
             </Link>
           </section>

@@ -43,7 +43,7 @@ export default function AdminCitiesPage() {
       } = await insforge.auth.getCurrentUser()
 
       if (!user) {
-        router.push('/sign-in?next=/admin/cities')
+        router.push('/sign-in?next=/manage/cities')
         return
       }
 

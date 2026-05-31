@@ -18,6 +18,7 @@ export const listingSchema = z.object({
 })
 
 export type ListingFormValues = z.infer<typeof listingSchema>
+export type ListingFormInput = z.input<typeof listingSchema>
 
 export const profileSchema = z.object({
   display_name: z.string().min(2, 'Name must be at least 2 characters').max(50),
@@ -34,3 +35,4 @@ export const profileSchema = z.object({
 })
 
 export type ProfileFormValues = z.infer<typeof profileSchema>
+export type ProfileFormInput = z.input<typeof profileSchema>

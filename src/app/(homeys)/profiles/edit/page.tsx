@@ -14,7 +14,7 @@ import {
 import { insforge } from '@/lib/insforge'
 import type { City, Profile } from '@/lib/types'
 import { LIFESTYLE_OPTIONS, LIFESTYLE_LABELS, HOBBY_OPTIONS, HOBBY_LABELS } from '@/lib/types'
-import { profileSchema, type ProfileFormValues } from '@/lib/schemas'
+import { profileSchema, type ProfileFormValues, type ProfileFormInput } from '@/lib/schemas'
 import { Blob } from '@/components/blob'
 
 const AGE_RANGES = ['18-24', '25-30', '31-35', '36-40', '40+'] as const
@@ -35,7 +35,7 @@ export default function EditProfilePage() {
     watch,
     reset,
     formState: { errors },
-  } = useForm<ProfileFormValues>({
+  } = useForm<ProfileFormInput, unknown, ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       lifestyle: [],
